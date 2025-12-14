@@ -10,3 +10,6 @@
 _certs/
 .coverage
 compile_commands.json
+# GBM build artifacts
+.build_tools/
+*.tar.gz
