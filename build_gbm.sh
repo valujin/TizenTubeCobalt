@@ -88,7 +88,13 @@ install_gn() {
         fi
         
         print_info "Downloading GN for ${gn_platform}..."
-        wget -q "https://chrome-infra-packages.appspot.com/dl/gn/gn/${gn_platform}/+/latest" -O gn.zip
+        print_warning "Downloading from upstream (consider using a pinned version for production)"
+        # TODO: Add checksum verification for security
+        # Expected SHA256 could be verified here
+        if ! wget -q "https://chrome-infra-packages.appspot.com/dl/gn/gn/${gn_platform}/+/latest" -O gn.zip; then
+            print_error "Failed to download GN"
+            return 1
+        fi
         unzip -q gn.zip
         chmod +x gn
         rm gn.zip
@@ -126,6 +132,10 @@ generate_gn_args() {
     local platform="$1"
     local arch="$2"
     
+    # Note: Currently using existing linux-x64x11 platform as base
+    # Custom GBM platforms (linux-x64gbm, linux-arm64gbm) would need to be created
+    # and registered in starboard/build/platforms.py for full GBM support
+    
     cat <<EOF
 target_platform="${platform}"
 target_os="linux"
@@ -136,6 +146,7 @@ is_clang=true
 use_thin_lto=false
 
 # Static linking configuration
+# These disable use of system libraries in favor of bundled versions
 use_system_libjpeg=false
 use_system_libpng=false
 use_system_zlib=false
@@ -143,21 +154,13 @@ use_system_libwebp=false
 use_system_freetype=false
 use_system_harfbuzz=false
 
-# GBM/DRM specific configuration
-use_gbm=true
-use_x11=false
-use_wayland=false
-
 # Media codecs - statically linked
 ffmpeg_branding="Chrome"
 
 # Disable features that require external dependencies
 enable_plugins=false
-use_glib=false
-use_pulseaudio=false
-use_alsa=true
 
-# Performance optimizations
+# Performance optimizations for release builds
 is_debug=false
 symbol_level=0
 enable_stripping=true
@@ -169,15 +172,23 @@ build_for_architecture() {
     local arch="$1"
     local platform_name=""
     local target_cpu=""
+    local gn_platform=""
     
     case "$arch" in
         x86_64|x64)
+            # Use existing linux-x64x11 platform
+            # In the future, this would be "linux-x64gbm" once that platform is created
             platform_name="linux-x64gbm"
+            gn_platform="linux-x64x11"
             target_cpu="x64"
             ;;
         arm64|aarch64)
+            # Note: For ARM64, we use the x64x11 config with arm64 cpu
+            # A dedicated linux-arm64gbm platform would be better
             platform_name="linux-arm64gbm"
+            gn_platform="linux-x64x11"
             target_cpu="arm64"
+            print_warning "ARM64 build uses x64x11 platform config - dedicated ARM64 GBM platform recommended"
             ;;
         *)
             print_error "Unsupported architecture: $arch"
@@ -187,20 +198,13 @@ build_for_architecture() {
     
     local out_dir="${OUTPUT_BASE_DIR}/${platform_name}_${BUILD_TYPE}"
     
-    print_info "Building for ${arch} (${platform_name})..."
+    print_info "Building for ${arch} (output: ${platform_name})..."
+    print_info "Using platform: ${gn_platform}"
     print_info "Output directory: ${out_dir}"
     
     # Generate GN configuration
     print_info "Generating build files with GN..."
-    local args_content=$(generate_gn_args "$platform_name" "$target_cpu")
-    
-    # For now, use the existing linux-x64x11 platform as base
-    # We'll fallback to this until GBM-specific platforms are created
-    local fallback_platform="linux-x64x11"
-    if [ "$arch" = "arm64" ] || [ "$arch" = "aarch64" ]; then
-        # For ARM64, we'll still use x64x11 config but with arm64 target_cpu
-        print_warning "Using ${fallback_platform} as base platform (GBM-specific platform not yet implemented)"
-    fi
+    local args_content=$(generate_gn_args "$gn_platform" "$target_cpu")
     
     # Create a temporary args.gn file
     mkdir -p "$out_dir"

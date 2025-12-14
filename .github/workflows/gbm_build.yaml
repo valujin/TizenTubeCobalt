@@ -109,7 +109,7 @@ jobs:
         with:
           name: cobalt-gbm-x64-${{ inputs.build_type || 'gold' }}
           path: |
-            out/linux-x64gbm_*_/cobalt
+            out/linux-x64gbm_*/cobalt
             out/linux-x64gbm_*/content/
             out/*.tar.gz
           retention-days: 30

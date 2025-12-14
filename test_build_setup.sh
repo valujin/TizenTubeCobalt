@@ -85,21 +85,23 @@ fi
 
 # Test 5: Check for required libraries
 print_test "Checking for required development libraries..."
+# Note: Package names vary by distribution, so we check for the actual libraries
 libs_to_check=(
-    "libasound2-dev:asound"
-    "libgles2-mesa-dev:GLESv2"
-    "libgbm-dev:gbm"
-    "libdrm-dev:drm"
-    "libegl1-mesa-dev:EGL"
+    "ALSA:asound"
+    "OpenGL ES:GLESv2"
+    "GBM:gbm"
+    "DRM:drm"
+    "EGL:EGL"
 )
 
 for lib_pair in "${libs_to_check[@]}"; do
     lib_name="${lib_pair%%:*}"
     lib_file="${lib_pair##*:}"
-    if ldconfig -p | grep -q "lib${lib_file}"; then
-        print_pass "${lib_name} is installed"
+    if ldconfig -p 2>/dev/null | grep -q "lib${lib_file}"; then
+        print_pass "${lib_name} library (lib${lib_file}) is available"
     else
-        print_warn "${lib_name} may not be installed (library lib${lib_file} not found)"
+        print_warn "${lib_name} library (lib${lib_file}) may not be installed"
+        print_warn "  Package names vary by distribution (e.g., lib${lib_file}-dev on Debian/Ubuntu)"
     fi
 done
 
