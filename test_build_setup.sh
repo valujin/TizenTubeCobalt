@@ -163,28 +163,54 @@ fi
 
 # Test 10: Check disk space
 print_test "Checking disk space..."
-available_gb=$(df -BG "${SCRIPT_DIR}" | awk 'NR==2 {print $4}' | sed 's/G//')
-if [ "$available_gb" -gt 50 ]; then
-    print_pass "Sufficient disk space available (${available_gb}GB)"
-elif [ "$available_gb" -gt 20 ]; then
-    print_warn "Low disk space (${available_gb}GB) - 50GB+ recommended"
+if command -v df &> /dev/null; then
+    # Try modern df first, fallback to basic df
+    if available_gb=$(df --output=avail -BG "${SCRIPT_DIR}" 2>/dev/null | tail -1 | sed 's/G//'); then
+        # Modern df worked
+        :
+    else
+        # Fallback to basic df
+        available_gb=$(df -BG "${SCRIPT_DIR}" | tail -1 | awk '{print $(NF-2)}' | sed 's/G//')
+    fi
+    
+    if [ -n "$available_gb" ] && [ "$available_gb" -gt 0 ] 2>/dev/null; then
+        if [ "$available_gb" -gt 50 ]; then
+            print_pass "Sufficient disk space available (${available_gb}GB)"
+        elif [ "$available_gb" -gt 20 ]; then
+            print_warn "Low disk space (${available_gb}GB) - 50GB+ recommended"
+        else
+            print_fail "Insufficient disk space (${available_gb}GB) - need at least 20GB"
+        fi
+    else
+        print_warn "Could not determine available disk space"
+    fi
 else
-    print_fail "Insufficient disk space (${available_gb}GB) - need at least 20GB"
+    print_warn "df command not available"
 fi
 
 # Test 11: Check memory
 print_test "Checking available memory..."
 if command -v free &> /dev/null; then
-    mem_gb=$(free -g | awk 'NR==2 {print $7}')
-    if [ "$mem_gb" -gt 8 ]; then
-        print_pass "Sufficient memory available (${mem_gb}GB)"
-    elif [ "$mem_gb" -gt 4 ]; then
-        print_warn "Low memory (${mem_gb}GB) - 8GB+ recommended"
+    # Try to get available memory - format varies by free version
+    mem_gb=$(free -g | awk '/^Mem:/ {print $7}' 2>/dev/null)
+    if [ -z "$mem_gb" ] || [ "$mem_gb" -eq 0 ] 2>/dev/null; then
+        # Fallback: try "available" field or total memory
+        mem_gb=$(free -g | awk '/^Mem:/ {if ($7) print $7; else if ($4) print $4; else print $2}' 2>/dev/null)
+    fi
+    
+    if [ -n "$mem_gb" ] && [ "$mem_gb" -gt 0 ] 2>/dev/null; then
+        if [ "$mem_gb" -gt 8 ]; then
+            print_pass "Sufficient memory available (${mem_gb}GB)"
+        elif [ "$mem_gb" -gt 4 ]; then
+            print_warn "Low memory (${mem_gb}GB) - 8GB+ recommended"
+        else
+            print_warn "Very low memory (${mem_gb}GB) - may need to reduce parallel jobs"
+        fi
     else
-        print_warn "Very low memory (${mem_gb}GB) - may need to reduce parallel jobs"
+        print_warn "Could not determine available memory"
     fi
 else
-    print_warn "Cannot determine available memory"
+    print_warn "free command not available"
 fi
 
 # Test 12: Check for DRM devices (runtime requirement)
