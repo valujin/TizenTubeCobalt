@@ -1,0 +1,154 @@
+# Makefile for building TizenTube Cobalt with GBM support
+# Copyright 2024 The TizenTube Cobalt Authors. All Rights Reserved.
+
+.PHONY: help build build-x64 build-arm64 build-debug build-devel clean install deps
+
+# Default target
+.DEFAULT_GOAL := help
+
+# Configuration
+BUILD_SCRIPT := ./build_gbm.sh
+OUTPUT_DIR := out
+
+help: ## Show this help message
+	@echo "TizenTube Cobalt - GBM Build Targets"
+	@echo "===================================="
+	@echo ""
+	@echo "Available targets:"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
+	@echo ""
+	@echo "Examples:"
+	@echo "  make build              # Build for all architectures (gold)"
+	@echo "  make build-x64          # Build for x86_64 only"
+	@echo "  make build-arm64        # Build for ARM64 only"
+	@echo "  make build-debug        # Build debug version for all architectures"
+	@echo "  make clean              # Clean build artifacts"
+	@echo ""
+
+deps: ## Install build dependencies (Ubuntu/Debian)
+	@echo "Installing build dependencies..."
+	@sudo apt-get update
+	@sudo apt-get install -y \
+		build-essential \
+		clang \
+		ninja-build \
+		python3 \
+		python3-pip \
+		wget \
+		unzip \
+		git \
+		pkg-config \
+		libasound2-dev \
+		libgles2-mesa-dev \
+		libgbm-dev \
+		libdrm-dev \
+		libegl1-mesa-dev \
+		bison \
+		nasm
+	@echo "Dependencies installed successfully"
+
+build: ## Build for all architectures (gold release)
+	$(BUILD_SCRIPT) --build-type gold
+
+build-x64: ## Build for x86_64 only (gold release)
+	$(BUILD_SCRIPT) --build-type gold --arch x86_64
+
+build-arm64: ## Build for ARM64 only (gold release)
+	$(BUILD_SCRIPT) --build-type gold --arch arm64
+
+build-debug: ## Build debug version for all architectures
+	$(BUILD_SCRIPT) --build-type debug
+
+build-devel: ## Build development version for all architectures
+	$(BUILD_SCRIPT) --build-type devel
+
+build-qa: ## Build QA version for all architectures
+	$(BUILD_SCRIPT) --build-type qa
+
+build-x64-debug: ## Build debug version for x86_64
+	$(BUILD_SCRIPT) --build-type debug --arch x86_64
+
+build-arm64-debug: ## Build debug version for ARM64
+	$(BUILD_SCRIPT) --build-type debug --arch arm64
+
+fast-build: ## Fast build using all CPU cores
+	$(BUILD_SCRIPT) --jobs $$(nproc)
+
+clean: ## Clean all build artifacts
+	@echo "Cleaning build artifacts..."
+	@rm -rf $(OUTPUT_DIR)
+	@rm -rf .build_tools
+	@echo "Clean complete"
+
+clean-x64: ## Clean x86_64 build artifacts only
+	@echo "Cleaning x86_64 build artifacts..."
+	@rm -rf $(OUTPUT_DIR)/linux-x64gbm_*
+	@echo "Clean complete"
+
+clean-arm64: ## Clean ARM64 build artifacts only
+	@echo "Cleaning ARM64 build artifacts..."
+	@rm -rf $(OUTPUT_DIR)/linux-arm64gbm_*
+	@echo "Clean complete"
+
+install: build ## Build and create distribution packages
+	@echo "Build complete. Packages created in $(OUTPUT_DIR)/"
+	@ls -lh $(OUTPUT_DIR)/*.tar.gz 2>/dev/null || echo "No packages found"
+
+run-x64: ## Run the x86_64 binary (gold build)
+	@if [ -f "$(OUTPUT_DIR)/linux-x64gbm_gold/cobalt" ]; then \
+		cd $(OUTPUT_DIR)/linux-x64gbm_gold && ./cobalt; \
+	else \
+		echo "Binary not found. Run 'make build-x64' first."; \
+		exit 1; \
+	fi
+
+run-arm64: ## Run the ARM64 binary (gold build)
+	@if [ -f "$(OUTPUT_DIR)/linux-arm64gbm_gold/cobalt" ]; then \
+		cd $(OUTPUT_DIR)/linux-arm64gbm_gold && ./cobalt; \
+	else \
+		echo "Binary not found. Run 'make build-arm64' first."; \
+		exit 1; \
+	fi
+
+check-deps: ## Check if required dependencies are installed
+	@echo "Checking dependencies..."
+	@command -v clang >/dev/null 2>&1 || (echo "❌ clang not found" && exit 1)
+	@command -v ninja >/dev/null 2>&1 || (echo "❌ ninja not found" && exit 1)
+	@command -v python3 >/dev/null 2>&1 || (echo "❌ python3 not found" && exit 1)
+	@command -v gn >/dev/null 2>&1 || echo "⚠️  gn not found (will be auto-downloaded)"
+	@echo "✅ All required dependencies are installed"
+
+info: ## Show build information
+	@echo "Build Information"
+	@echo "================="
+	@echo "Script:          $(BUILD_SCRIPT)"
+	@echo "Output Directory: $(OUTPUT_DIR)"
+	@echo "Host Architecture: $$(uname -m)"
+	@echo "CPU Cores:       $$(nproc)"
+	@echo ""
+	@if [ -d "$(OUTPUT_DIR)" ]; then \
+		echo "Existing builds:"; \
+		ls -ld $(OUTPUT_DIR)/*/ 2>/dev/null || echo "  None"; \
+	fi
+
+test-build: ## Quick test build (x86_64 devel)
+	$(BUILD_SCRIPT) --build-type devel --arch x86_64
+
+all: clean deps build ## Clean, install dependencies, and build everything
+
+# Docker targets (if docker-compose.yml supports GBM builds)
+docker-build: ## Build in Docker container
+	@docker-compose build linux-x64x11
+	@docker-compose run linux-x64x11
+
+# Development helpers
+format: ## Format build scripts
+	@command -v shfmt >/dev/null 2>&1 && shfmt -w $(BUILD_SCRIPT) || echo "shfmt not installed"
+
+lint: ## Lint build scripts
+	@command -v shellcheck >/dev/null 2>&1 && shellcheck $(BUILD_SCRIPT) || echo "shellcheck not installed"
+
+.PHONY: help deps build build-x64 build-arm64 build-debug build-devel build-qa \
+        build-x64-debug build-arm64-debug fast-build clean clean-x64 clean-arm64 \
+        install run-x64 run-arm64 check-deps info test-build all docker-build \
+        format lint
