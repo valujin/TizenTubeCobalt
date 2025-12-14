@@ -1,0 +1,220 @@
+name: GBM Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: true
+        default: 'gold'
+        type: choice
+        options:
+          - debug
+          - devel
+          - qa
+          - gold
+      architectures:
+        description: 'Architectures to build (space-separated)'
+        required: true
+        default: 'x86_64'
+        type: string
+  push:
+    branches:
+      - main
+      - 'feature/gbm-*'
+    paths:
+      - 'build_gbm.sh'
+      - 'starboard/**'
+      - '.github/workflows/gbm_build.yaml'
+
+jobs:
+  build-x64:
+    name: Build x86_64
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      
+      - name: Free Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          df -h
+      
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            ninja-build \
+            python3 \
+            python3-pip \
+            wget \
+            unzip \
+            git \
+            pkg-config \
+            libasound2-dev \
+            libgles2-mesa-dev \
+            libgbm-dev \
+            libdrm-dev \
+            libegl1-mesa-dev \
+            bison \
+            nasm \
+            ccache
+          ccache --max-size=10G
+      
+      - name: Install GN
+        run: |
+          wget -q https://chrome-infra-packages.appspot.com/dl/gn/gn/linux-amd64/+/latest -O gn.zip
+          unzip -q gn.zip
+          sudo mv gn /usr/local/bin/
+          sudo chmod +x /usr/local/bin/gn
+          gn --version
+      
+      - name: Set PYTHONPATH
+        run: echo "PYTHONPATH=$GITHUB_WORKSPACE:$PYTHONPATH" >> $GITHUB_ENV
+      
+      - name: Download Clang
+        run: |
+          bash ./starboard/tools/download_clang.sh
+      
+      - name: Build GBM x86_64
+        run: |
+          BUILD_TYPE=${{ inputs.build_type || 'gold' }} \
+          ARCHITECTURES="x86_64" \
+          ./build_gbm.sh
+        env:
+          NINJA_PARALLEL: 4
+      
+      - name: Check Binary
+        run: |
+          if [ -f out/linux-x64gbm_*/cobalt ]; then
+            ls -lh out/linux-x64gbm_*/cobalt
+            file out/linux-x64gbm_*/cobalt
+            ldd out/linux-x64gbm_*/cobalt || true
+          else
+            echo "Binary not found!"
+            find out -name "cobalt" -o -name "*.so" | head -20
+            exit 1
+          fi
+      
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cobalt-gbm-x64-${{ inputs.build_type || 'gold' }}
+          path: |
+            out/linux-x64gbm_*_/cobalt
+            out/linux-x64gbm_*/content/
+            out/*.tar.gz
+          retention-days: 30
+      
+      - name: Upload Build Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-x64-${{ inputs.build_type || 'gold' }}
+          path: |
+            out/linux-x64gbm_*/*.log
+          retention-days: 7
+
+  build-arm64:
+    name: Build ARM64
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      
+      - name: Free Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          df -h
+      
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            ninja-build \
+            python3 \
+            python3-pip \
+            wget \
+            unzip \
+            git \
+            pkg-config \
+            libasound2-dev \
+            libgles2-mesa-dev \
+            libgbm-dev \
+            libdrm-dev \
+            libegl1-mesa-dev \
+            bison \
+            nasm \
+            ccache \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu
+          ccache --max-size=10G
+      
+      - name: Install GN
+        run: |
+          wget -q https://chrome-infra-packages.appspot.com/dl/gn/gn/linux-amd64/+/latest -O gn.zip
+          unzip -q gn.zip
+          sudo mv gn /usr/local/bin/
+          sudo chmod +x /usr/local/bin/gn
+          gn --version
+      
+      - name: Set PYTHONPATH
+        run: echo "PYTHONPATH=$GITHUB_WORKSPACE:$PYTHONPATH" >> $GITHUB_ENV
+      
+      - name: Download Clang
+        run: |
+          bash ./starboard/tools/download_clang.sh
+      
+      - name: Build GBM ARM64
+        run: |
+          BUILD_TYPE=${{ inputs.build_type || 'gold' }} \
+          ARCHITECTURES="arm64" \
+          ./build_gbm.sh
+        env:
+          NINJA_PARALLEL: 4
+      
+      - name: Check Binary
+        run: |
+          if [ -f out/linux-arm64gbm_*/cobalt ]; then
+            ls -lh out/linux-arm64gbm_*/cobalt
+            file out/linux-arm64gbm_*/cobalt
+          else
+            echo "Binary not found!"
+            find out -name "cobalt" -o -name "*.so" | head -20
+            exit 1
+          fi
+      
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cobalt-gbm-arm64-${{ inputs.build_type || 'gold' }}
+          path: |
+            out/linux-arm64gbm_*/cobalt
+            out/linux-arm64gbm_*/content/
+            out/*.tar.gz
+          retention-days: 30
+      
+      - name: Upload Build Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-arm64-${{ inputs.build_type || 'gold' }}
+          path: |
+            out/linux-arm64gbm_*/*.log
+          retention-days: 7

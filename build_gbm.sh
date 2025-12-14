@@ -206,8 +206,9 @@ build_for_architecture() {
     mkdir -p "$out_dir"
     echo "$args_content" > "${out_dir}/args.gn"
     
-    # Run GN
-    if ! gn gen "$out_dir" --args="$(echo "$args_content")" 2>&1 | tee "${out_dir}/gn.log"; then
+    # Run GN with properly escaped args
+    # We pass the args via the args.gn file rather than command line for reliability
+    if ! gn gen "$out_dir" 2>&1 | tee "${out_dir}/gn.log"; then
         print_error "GN generation failed for ${arch}"
         print_info "Check ${out_dir}/gn.log for details"
         return 1
