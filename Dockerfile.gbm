@@ -1,0 +1,80 @@
+# Dockerfile for building TizenTube Cobalt with GBM support
+# This provides a reproducible build environment
+
+FROM ubuntu:22.04
+
+LABEL maintainer="TizenTube Cobalt Contributors"
+LABEL description="Build environment for TizenTube Cobalt GBM builds"
+LABEL version="1.0"
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Set working directory
+WORKDIR /code
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Build essentials
+    build-essential \
+    clang \
+    ninja-build \
+    python3 \
+    python3-pip \
+    python3-venv \
+    # Tools
+    wget \
+    unzip \
+    git \
+    pkg-config \
+    ccache \
+    bison \
+    nasm \
+    # Development libraries
+    libasound2-dev \
+    libgles2-mesa-dev \
+    libgbm-dev \
+    libdrm-dev \
+    libegl1-mesa-dev \
+    libglib2.0-dev \
+    # Optional but useful
+    vim \
+    less \
+    htop \
+    && rm -rf /var/lib/apt/lists/*
+
+# Configure ccache
+RUN mkdir -p /root/.ccache && \
+    ccache --max-size=10G
+
+# Install GN
+RUN wget -q https://chrome-infra-packages.appspot.com/dl/gn/gn/linux-amd64/+/latest -O /tmp/gn.zip && \
+    unzip -q /tmp/gn.zip -d /usr/local/bin && \
+    chmod +x /usr/local/bin/gn && \
+    rm /tmp/gn.zip && \
+    gn --version
+
+# Set environment variables
+ENV PYTHONPATH=/code
+ENV NINJA_PARALLEL=4
+ENV USE_CCACHE=1
+ENV CCACHE_DIR=/root/.ccache
+
+# Create volume mount points
+VOLUME ["/code", "/root/.ccache"]
+
+# Set entrypoint to bash
+CMD ["/bin/bash"]
+
+# Usage instructions
+# Build the image:
+#   docker build -t cobalt-gbm-builder -f Dockerfile.gbm .
+#
+# Run interactive shell:
+#   docker run -it -v $(pwd):/code -v ccache:/root/.ccache cobalt-gbm-builder
+#
+# Build directly:
+#   docker run -v $(pwd):/code -v ccache:/root/.ccache cobalt-gbm-builder ./build_gbm.sh
+#
+# Build specific architecture:
+#   docker run -v $(pwd):/code -v ccache:/root/.ccache cobalt-gbm-builder ./build_gbm.sh --arch x86_64

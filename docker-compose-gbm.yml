@@ -1,0 +1,80 @@
+# Docker Compose configuration for GBM builds
+# This makes it easy to build in a containerized environment
+
+version: '3.8'
+
+services:
+  # Build service for GBM
+  gbm-builder:
+    build:
+      context: .
+      dockerfile: Dockerfile.gbm
+    image: cobalt-gbm-builder:latest
+    container_name: cobalt-gbm-builder
+    volumes:
+      # Mount source code
+      - .:/code
+      # Mount ccache for faster rebuilds
+      - gbm-ccache:/root/.ccache
+    environment:
+      - NINJA_PARALLEL=${NINJA_PARALLEL:-4}
+      - BUILD_TYPE=${BUILD_TYPE:-gold}
+      - ARCHITECTURES=${ARCHITECTURES:-x86_64}
+      - USE_CCACHE=1
+      - PYTHONPATH=/code
+    working_dir: /code
+    # Keep container running for interactive use
+    tty: true
+    stdin_open: true
+    # Resource limits (adjust based on your system)
+    mem_limit: 16g
+    memswap_limit: 20g
+    cpus: 8
+
+  # Service for x86_64 builds
+  gbm-x64:
+    extends: gbm-builder
+    container_name: cobalt-gbm-x64
+    environment:
+      - ARCHITECTURES=x86_64
+      - NINJA_PARALLEL=${NINJA_PARALLEL:-4}
+      - BUILD_TYPE=${BUILD_TYPE:-gold}
+    command: ./build_gbm.sh --arch x86_64
+
+  # Service for ARM64 builds
+  gbm-arm64:
+    extends: gbm-builder
+    container_name: cobalt-gbm-arm64
+    environment:
+      - ARCHITECTURES=arm64
+      - NINJA_PARALLEL=${NINJA_PARALLEL:-4}
+      - BUILD_TYPE=${BUILD_TYPE:-gold}
+    command: ./build_gbm.sh --arch arm64
+
+volumes:
+  # Persistent volume for ccache
+  gbm-ccache:
+    driver: local
+
+# Usage Examples:
+# 
+# Build the Docker image:
+#   docker-compose -f docker-compose-gbm.yml build
+#
+# Start interactive shell:
+#   docker-compose -f docker-compose-gbm.yml run --rm gbm-builder
+#
+# Build x86_64:
+#   docker-compose -f docker-compose-gbm.yml run --rm gbm-x64
+#
+# Build ARM64:
+#   docker-compose -f docker-compose-gbm.yml run --rm gbm-arm64
+#
+# Build both architectures:
+#   docker-compose -f docker-compose-gbm.yml run --rm gbm-builder ./build_gbm.sh
+#
+# Build with custom settings:
+#   BUILD_TYPE=debug NINJA_PARALLEL=8 docker-compose -f docker-compose-gbm.yml run --rm gbm-x64
+#
+# Clean up:
+#   docker-compose -f docker-compose-gbm.yml down -v
